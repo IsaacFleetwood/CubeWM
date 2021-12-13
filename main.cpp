@@ -80,8 +80,7 @@ class Texture {
 };
 typedef void (*t_glx_bind)(Display *, GLXDrawable, int , const int *);
 
-static GLXFBConfig *fbConfigs;
-
+static GLXFBConfig          *fbConfigs;
 static Display* dpy;
 
 static GLuint wrapper_glx_set_texture(Texture* texture, Texture* alt) {
@@ -104,19 +103,32 @@ static GLuint wrapper_glx_set_texture(Texture* texture, Texture* alt) {
 		texture->textInt = textureInt;
 		return textureInt;
 	} else {
+		GLXFBConfig * configs = 0;
+
+		const int pixmap_config[] = {
+			GLX_BIND_TO_TEXTURE_RGBA_EXT, True,
+			GLX_DRAWABLE_TYPE, GLX_PIXMAP_BIT,
+			GLX_BIND_TO_TEXTURE_TARGETS_EXT, GLX_TEXTURE_2D_BIT_EXT,
+			GLX_DOUBLEBUFFER, False,
+			//GLX_Y_INVERTED_EXT, GLX_DONT_CARE,
+			None
+		};
 
 		const int pixmap_attribs[] = {
 			GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_2D_EXT,
-			GLX_TEXTURE_FORMAT_EXT, GLX_TEXTURE_FORMAT_RGB_EXT,
+			GLX_TEXTURE_FORMAT_EXT, GLX_TEXTURE_FORMAT_RGBA_EXT,
 			None
 		};
 		GLuint texture_id;
+		
+    	int c = 0;
+	
+		configs = glXChooseFBConfig(dpy, DefaultScreen(dpy), pixmap_config, &c);
 		
 		GLXPixmap glxpixmap = glXCreatePixmap(dpy, fbConfigs[0], *texture->pixmap, pixmap_attribs);
 		
 		t_glx_bind glXBindTexImageEXT = (t_glx_bind) glXGetProcAddress((const GLubyte *)"glXBindTexImageEXT");
 		
-		glEnable(GL_TEXTURE_2D);
 		glGenTextures(1, &texture_id);
 		glBindTexture(GL_TEXTURE_2D, texture_id);
 		glXBindTexImageEXT(dpy, glxpixmap, GLX_FRONT_EXT, NULL);
@@ -433,6 +445,7 @@ int doubleBufferAttributes[] = {
 	GLX_RED_SIZE,      1,     /* the maximum number of bits per component    */
 	GLX_GREEN_SIZE,    1, 
 	GLX_BLUE_SIZE,     1,
+	GLX_DEPTH_SIZE,    1,
 	None
 };
 
@@ -468,8 +481,8 @@ double map(double val, double min, double max, double newMax, double newMin) {
 int main( int argc, char *argv[] )
 {
 	
-	int DISPLAY_WIDTH = 2560;
-	int DISPLAY_HEIGHT = 1440;
+	int DISPLAY_WIDTH = 1920;
+	int DISPLAY_HEIGHT = 1080;
 	
 	myfile.open("test.txt", std::ios_base::app);
 	Window                xWin;
@@ -678,16 +691,9 @@ int main( int argc, char *argv[] )
 				case PropertyNotify:
 					myfile << "Property Notify\n";
 					break;
-				case ResizeRequest: {
+				case ResizeRequest:
 					myfile << "Resize QRequest\n";
-					/*
-					XResizeRequestEvent e = ev.xresizerequest;
-					
-					XResizeWindow(dpy, e.window, 512, 512);
-					*/
-					// e.width, e.height
 					break;
-				}
 				case VisibilityNotify:
 					myfile << "Visibility Notify\n";
 					break;
@@ -718,11 +724,23 @@ int main( int argc, char *argv[] )
 					break;
 				case UnmapNotify:
 					myfile << ev.type << " UnMap Notify \n";
-					
 					break;
 				case CirculateRequest: {
 					myfile << ev.type << " Circulate Request \n";
-					
+					/*
+					XConfigureRequestEvent e = ev.xconfigurerequest;
+					XWindowChanges changes;
+					// Copy fields from e to changes.
+					changes.x = e.x;
+					changes.y = e.y;
+					changes.width = e.width;
+					changes.height = e.height;
+					changes.border_width = e.border_width;
+					changes.sibling = e.above;
+					changes.stack_mode = e.detail;
+					// Grant request by calling XConfigureWindow().
+					XConfigureWindow(dpy, e.window, e.value_mask, &changes);
+					*/
 					break;
 				}
 				case ConfigureRequest: {
@@ -1205,7 +1223,6 @@ int main( int argc, char *argv[] )
 		
 		if(key[4] == 1 && pos->y <= 1.1f ) {
 			vY = 1.0f;
-			//
 		}
 		
 		glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
@@ -1214,8 +1231,8 @@ int main( int argc, char *argv[] )
 		
 		glFrustum(minX, maxX, minY, maxY, minZ, maxZ);
 		//glScalef(100.0f,100.0f,100.0f);
-		
-		draw_cursor(map(mouseX, DISPLAY_WIDTH, 0, minX, maxX), map(mouseY, 0, DISPLAY_HEIGHT, minY, maxY), -minZ-0.000001, maxX, maxX);
+		if(!mouseLock)
+			draw_cursor(map(mouseX, DISPLAY_WIDTH, 0, minX, maxX), map(mouseY, 0, DISPLAY_HEIGHT, minY, maxY), -minZ-0.000001, maxX, maxX);
 		Texture* placeableTexture = &textures[0];
 		for(int i = 1; i < windowAmt; i++) {
 			if(placeableWindow == windows[i]) {
@@ -1230,23 +1247,6 @@ int main( int argc, char *argv[] )
 					double mWinY = map(attrs.y+attrs.height, 0, DISPLAY_HEIGHT, minY, maxY);
 					
 					double vertZ = -minZ-0.000001;
-					/*
-					glBegin(GL_LINES);
-					glVertex3f(winX, winY, vertZ);
-					glVertex3f(mWinX, winY, vertZ);
-					glEnd();
-					glBegin(GL_LINES);
-					glVertex3f(mWinX, winY, vertZ);
-					glVertex3f(mWinX, mWinY, vertZ);
-					glBegin(GL_LINES);
-					glVertex3f(mWinX, mWinY, vertZ);
-					glVertex3f(winX, mWinY, vertZ);
-					glEnd();
-					glBegin(GL_LINES);
-					glVertex3f(winX, mWinY, vertZ);
-					glVertex3f(winX, winY, vertZ);
-					glEnd();
-					*/
 					int textureIndex = placeableTexture->textInt;
 					glBindTexture(GL_TEXTURE_2D, textureIndex);
 					glBegin(GL_POLYGON);
